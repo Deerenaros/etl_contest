@@ -1,3 +1,5 @@
+import pymysql
+
 from typing import Iterable, Any
 
 from .constants import PRIMITIVES
@@ -18,9 +20,10 @@ class Extractor(Elevator):
         self._tname = tname
         self._delta = delta
 
-    def __iter__(self):
-        import pymysql
+    def sync(self, dst: "Loader"):
+        self._last_transaction = dst.sync()
 
+    def __iter__(self):
         with pymysql.connect(**self._src) as src:
             with src.cursor() as c:
                 c.execute(PRIMITIVES.BEGIN % self)
@@ -28,8 +31,7 @@ class Extractor(Elevator):
                 c.execute(PRIMITIVES.END % self)
                 end, = c.fetchone()
 
-                last_transaction = datetime(1970, 1, 1, 0, 0, 0)
-                begin = max(begin, last_transaction)
+                begin = max(begin, self._last_transaction)
 
                 for sslice in datespan(begin, end+self._delta, self._delta):
                     c.execute(PRIMITIVES.EXTRACT % self)
@@ -38,12 +40,23 @@ class Extractor(Elevator):
 
 
 class Loader(Elevator):
-    def __init__(self, src: Iterable, dst: dict[str, Any], tname: str):
+    def __init__(self, src: Extractor, dst: dict[str, Any], tname: str):
+        self._tname = tname
         self._src = src
         self._dst = dst
 
+    def sync(self):
+        with pymysql.connect(**self._dst) as dst:
+            with dst.cursor() as c:
+                c.execute(PRIMITIVES.BEGIN % self)
+                try:
+                    begin, = c.fetchone()
+                except TypeError:
+                    begin = datetime(1, 1, 1)
+        return begin
+
     def load(self):
-        import pymysql
+        self._src.sync(self)
 
         with pymysql.connect(**self._dst) as dst:
             with dst.cursor() as c:

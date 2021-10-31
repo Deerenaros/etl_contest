@@ -21,7 +21,7 @@ class PRIMITIVES:
         ON
             t.idoper = o.id
         WHERE
-            dt > '%(last_transaction)s' AND dt >= '%(sslice)s' AND dt < '%(sslice+_delta)s'
+            dt >= '%(sslice)s' AND dt < '%(sslice+_delta)s'
         ORDER BY t.dt
     """
 
